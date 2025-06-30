@@ -1,0 +1,32 @@
+# Arquivos e diretórios a serem ignorados no build Docker
+
+# Ambiente virtual
+venv/
+env/
+.env
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Arquivos de desenvolvimento
+.git/
+.gitignore
+README.md
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Arquivos temporários
+.tmp/
+temp/
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
