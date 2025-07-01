@@ -28,6 +28,7 @@ class Question(db.Model):
     correct_answers = db.Column(db.Text, nullable=False)
     explanation = db.Column(db.Text, nullable=False)
     difficulty = db.Column(db.String(20), default='medium')
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 # Modelo SimulationSession
 class SimulationSession(db.Model):
