@@ -90,6 +90,66 @@ def start_simulation():
         'total_questions': num_questions
     })
 
+@simulation_bp.route('/simulation/<int:session_id>', methods=['GET'])
+def get_simulation(session_id):
+    """Retorna dados de um simulado em andamento"""
+    session = SimulationSession.query.get_or_404(session_id)
+    
+    # Se já foi completado, redireciona para resultados
+    if session.completed_at:
+        return jsonify({'error': 'Simulado já foi concluído'}), 400
+    
+    # Carrega os IDs das questões
+    questions_data_raw = json.loads(session.questions_data)
+    
+    # Verifica se é o formato novo (com question_ids e detailed_results) ou antigo (só IDs)
+    if isinstance(questions_data_raw, dict) and 'question_ids' in questions_data_raw:
+        # Formato novo: já foi submetido antes
+        question_ids = questions_data_raw['question_ids']
+    elif isinstance(questions_data_raw, list):
+        # Verifica se é lista de IDs ou lista de resultados detalhados
+        if questions_data_raw and isinstance(questions_data_raw[0], dict):
+            # Formato antigo: lista de resultados detalhados - extrai os question_ids
+            question_ids = [item['question_id'] for item in questions_data_raw]
+        else:
+            # Formato original: lista de IDs de questões
+            question_ids = questions_data_raw
+    else:
+        return jsonify({'error': 'Formato de dados de questões inválido'}), 400
+    
+    # Busca as questões
+    questions = []
+    for question_id in question_ids:
+        question = Question.query.get(question_id)
+        if question:
+            questions.append(question.to_dict_without_answers())
+    
+    # Busca informações da certificação para pegar a duração
+    cert_info = {
+        'CLF-C02': {'duration': 90, 'passing_score': 700},
+        'AIF-C01': {'duration': 90, 'passing_score': 700},
+        'SAA-C03': {'duration': 130, 'passing_score': 720},
+        'SAP-C02': {'duration': 180, 'passing_score': 750}
+    }
+    
+    cert_data = cert_info.get(session.certification, {'duration': 90, 'passing_score': 700})
+    
+    # Retorna dados do simulado
+    simulation_data = {
+        'id': session.id,
+        'certification': session.certification,
+        'user_name': session.user_name,
+        'total_questions': session.total_questions,
+        'duration': cert_data['duration'],
+        'passing_score': cert_data['passing_score'],
+        'started_at': session.started_at.isoformat() if session.started_at else None
+    }
+    
+    return jsonify({
+        'simulation': simulation_data,
+        'questions': questions
+    })
+
 @simulation_bp.route('/simulation/<int:session_id>/submit', methods=['POST'])
 def submit_simulation(session_id):
     """Submete respostas do simulado e calcula resultado"""
@@ -98,14 +158,34 @@ def submit_simulation(session_id):
     time_taken = data.get('time_taken', 0)
     
     session = SimulationSession.query.get_or_404(session_id)
-    question_ids = json.loads(session.questions_data)
+    questions_data_raw = json.loads(session.questions_data)
+    
+    # Verifica se é o formato novo (com question_ids e detailed_results) ou antigo (só IDs)
+    if isinstance(questions_data_raw, dict) and 'question_ids' in questions_data_raw:
+        # Formato novo: já foi submetido antes
+        question_ids = questions_data_raw['question_ids']
+    elif isinstance(questions_data_raw, list):
+        # Verifica se é lista de IDs ou lista de resultados detalhados
+        if questions_data_raw and isinstance(questions_data_raw[0], dict):
+            # Formato antigo: lista de resultados detalhados - extrai os question_ids
+            question_ids = [item['question_id'] for item in questions_data_raw]
+        else:
+            # Formato original: lista de IDs de questões
+            question_ids = questions_data_raw
+    else:
+        return jsonify({'error': 'Formato de dados de questões inválido'}), 400
     
     correct_count = 0
     detailed_results = []
     
-    for question_id in question_ids:
+    # Itera sobre as questões usando o índice para mapear as respostas do frontend
+    for index, question_id in enumerate(question_ids):
         question = Question.query.get(question_id)
-        user_answer = answers.get(str(question_id), [])
+        if question is None:
+            continue
+            
+        # Frontend envia respostas usando índice da questão (0, 1, 2, etc.)
+        user_answer = answers.get(str(index), [])
         correct_answers = json.loads(question.correct_answers)
         
         is_correct = set(user_answer) == set(correct_answers)
@@ -132,7 +212,13 @@ def submit_simulation(session_id):
     session.score = scaled_score
     session.time_taken = time_taken
     session.completed_at = datetime.utcnow()
-    session.questions_data = json.dumps(detailed_results)
+    
+    # Preserva a estrutura original: mantém IDs das questões e adiciona os resultados detalhados
+    original_questions_data = {
+        'question_ids': question_ids,  # IDs originais das questões
+        'detailed_results': detailed_results  # Resultados detalhados
+    }
+    session.questions_data = json.dumps(original_questions_data)
     
     db.session.commit()
     
@@ -163,7 +249,58 @@ def submit_simulation(session_id):
 def get_simulation_results(session_id):
     """Retorna resultados detalhados de um simulado"""
     session = SimulationSession.query.get_or_404(session_id)
-    return jsonify(session.to_dict())
+    
+    # Busca informações da certificação para pegar passing_score
+    cert_info = {
+        'CLF-C02': {'duration': 90, 'passing_score': 700},
+        'AIF-C01': {'duration': 90, 'passing_score': 700},
+        'SAA-C03': {'duration': 130, 'passing_score': 720},
+        'SAP-C02': {'duration': 180, 'passing_score': 750}
+    }
+    
+    cert_data = cert_info.get(session.certification, {'duration': 90, 'passing_score': 700})
+    
+    # Calcula percentual
+    percentage = (session.correct_answers / session.total_questions) * 100 if session.total_questions > 0 else 0
+    
+    # Estrutura dados do simulado
+    simulation_data = {
+        'id': session.id,
+        'certification': session.certification,
+        'user_name': session.user_name,
+        'total_questions': session.total_questions,
+        'passing_score': cert_data['passing_score'],
+        'started_at': session.started_at.isoformat() if session.started_at else None,
+        'completed_at': session.completed_at.isoformat() if session.completed_at else None
+    }
+    
+    # Carrega questões com respostas do JSON armazenado
+    questions_data_raw = json.loads(session.questions_data) if session.questions_data else []
+    
+    # Verifica o formato dos dados
+    if isinstance(questions_data_raw, dict) and 'detailed_results' in questions_data_raw:
+        # Formato novo: extrai os resultados detalhados
+        questions_with_answers = questions_data_raw['detailed_results']
+    elif isinstance(questions_data_raw, list) and questions_data_raw and isinstance(questions_data_raw[0], dict):
+        # Formato antigo: os dados já são os resultados detalhados
+        questions_with_answers = questions_data_raw
+    else:
+        # Nenhum resultado encontrado
+        questions_with_answers = []
+    
+    # Renomeia campos para compatibilidade com frontend
+    for q in questions_with_answers:
+        if 'user_answer' in q:
+            q['user_answers'] = q['user_answer']
+    
+    return jsonify({
+        'simulation': simulation_data,
+        'score': session.score,
+        'percentage': percentage,
+        'correct_count': session.correct_answers,
+        'total_questions': session.total_questions,
+        'questions_with_answers': questions_with_answers
+    })
 
 @simulation_bp.route('/questions', methods=['POST'])
 def add_question():

@@ -24,6 +24,9 @@ RUN mkdir -p src/database
 # Inicializa banco de dados
 RUN python init_db.py
 
+# Define permissões para o diretório do banco de dados
+RUN chmod -R 777 src/database
+
 # Expõe porta
 EXPOSE 5001
 
@@ -31,6 +34,9 @@ EXPOSE 5001
 ENV FLASK_APP=src/main.py
 ENV FLASK_ENV=development
 ENV PYTHONPATH=/app
+
+# Ensure we run as root to avoid permission issues with mounted volumes
+USER root
 
 # Comando para iniciar aplicação
 CMD ["python", "src/main.py"]
