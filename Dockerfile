@@ -12,17 +12,19 @@ RUN apt-get update && apt-get install -y \
 # Copia arquivos de dependências
 COPY requirements.txt .
 
+RUN python -m venv /app/venv
+
 # Instala dependências Python
-RUN pip install --no-cache-dir -r requirements.txt
+RUN /app/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Copia código da aplicação
 COPY . .
 
-# Cria diretório para banco de dados
+# Cria diretório para banco de dados se não existir
 RUN mkdir -p src/database
 
-# Inicializa banco de dados
-RUN python init_db.py
+# Inicializa banco de dados com questions
+RUN /app/venv/bin/python unified_seed_database.py --reset
 
 # Define permissões para o diretório do banco de dados
 RUN chmod -R 777 src/database
