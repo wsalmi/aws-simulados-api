@@ -1,5 +1,5 @@
 # Dockerfile para Backend Flask
-FROM python:3.11-slim
+FROM python:3-slim
 
 # Define diretório de trabalho
 WORKDIR /app
@@ -9,22 +9,17 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copia arquivos de dependências
-COPY requirements.txt .
-
-RUN python -m venv /app/venv
-
-# Instala dependências Python
-RUN /app/venv/bin/pip install --no-cache-dir -r requirements.txt
-
 # Copia código da aplicação
 COPY . .
+
+# Instala dependências Python
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Cria diretório para banco de dados se não existir
 RUN mkdir -p src/database
 
 # Inicializa banco de dados com questions
-RUN /app/venv/bin/python unified_seed_database.py --reset
+RUN python unified_seed_database.py --reset
 
 # Define permissões para o diretório do banco de dados
 RUN chmod -R 777 src/database
